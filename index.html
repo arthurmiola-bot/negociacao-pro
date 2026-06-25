@@ -888,14 +888,31 @@ if(!OK){
   onAuthStateChanged(auth, async u=>{
     if(u){
       currentUser=u;
+      var lerOk=true;
       try{
         var snap=await getDoc(doc(db,'usuarios',u.uid));
-        userData=snap.exists()?snap.data():{nome:u.email,perfil:'vendedor',lojaId:'',lojaNome:'',empresaId:''};
-      }catch(e){ userData={nome:u.email,perfil:'vendedor',lojaId:'',lojaNome:'',empresaId:''}; }
+        if(snap.exists()){
+          userData=snap.data();
+        } else {
+          // Autenticou, mas NAO existe documento em 'usuarios' com este UID
+          console.warn('[login] Documento usuarios/'+u.uid+' nao encontrado. UID logado:', u.uid);
+          userData={nome:u.email,perfil:'vendedor',lojaId:'',lojaNome:'',empresaId:''};
+          lerOk=false;
+        }
+      }catch(e){
+        // Falha ao LER o documento (tipicamente regras do Firestore nao publicadas/bloqueando)
+        console.error('[login] Erro ao ler usuarios/'+u.uid+':', e.code||e.message, e);
+        userData={nome:u.email,perfil:'vendedor',lojaId:'',lojaNome:'',empresaId:''};
+        lerOk=false;
+      }
       if(!userData.empresaId){
         await signOut(auth);
         showLogin();
-        document.getElementById('login-err').textContent='Usuario sem empresa vinculada. Contate o administrador.';
+        // Mensagem clara conforme a causa (e nao sobrescrita pelo erro de senha)
+        var msg = lerOk
+          ? 'Login OK, mas seu usuário não tem empresa vinculada. Confira o documento em "usuarios" (campo empresaId) e se o ID do documento é igual ao seu UID: '+u.uid
+          : 'Login OK, mas não consegui ler seus dados. Verifique se as regras do Firestore foram publicadas. (UID: '+u.uid+')';
+        document.getElementById('login-err').textContent=msg;
         return;
       }
       await loadConfig();
