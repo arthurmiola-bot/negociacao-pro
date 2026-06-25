@@ -948,7 +948,21 @@ document.getElementById('btn-login').addEventListener('click', async()=>{
   errEl.textContent='';
   if(!em||!pw){errEl.textContent='Preencha e-mail e senha.';return;}
   try{ await signInWithEmailAndPassword(auth,em,pw); }
-  catch(e){ errEl.textContent='E-mail ou senha incorretos.'; }
+  catch(e){
+    // Traduz os erros mais comuns do Firebase para mensagens claras
+    var code=e.code||'';
+    var msg='E-mail ou senha incorretos.';
+    if(code==='auth/invalid-email') msg='E-mail em formato inválido.';
+    else if(code==='auth/user-disabled') msg='Este usuário foi desativado.';
+    else if(code==='auth/user-not-found') msg='Usuário não encontrado no Authentication.';
+    else if(code==='auth/wrong-password'||code==='auth/invalid-credential') msg='E-mail ou senha incorretos.';
+    else if(code==='auth/operation-not-allowed') msg='Login por e-mail/senha está DESATIVADO no Firebase (Authentication → Sign-in method).';
+    else if(code==='auth/unauthorized-domain') msg='Domínio não autorizado no Firebase (Authentication → Settings → Authorized domains).';
+    else if(code==='auth/network-request-failed') msg='Falha de rede. Verifique a conexão (ou extensão bloqueando o Firebase).';
+    else if(code==='auth/too-many-requests') msg='Muitas tentativas. Aguarde alguns minutos e tente de novo.';
+    else if(code) msg='Erro: '+code;
+    errEl.textContent=msg;
+  }
 });
 document.getElementById('login-senha').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('btn-login').click();});
 document.getElementById('btn-logout').addEventListener('click',async()=>{ if(!confirmarSeSujo()) return; if(OK) await signOut(auth); else showLogin(); });
