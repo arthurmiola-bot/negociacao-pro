@@ -116,6 +116,8 @@ select.field{cursor:pointer}
 .pi:last-child{border-bottom:none}
 .pi-info{flex:1;pointer-events:none}
 .pi-name{font-size:13px;font-weight:600;color:var(--text)}
+.pi-ativo{font-size:11px;color:var(--navy3);font-style:italic;margin-top:1px}
+.pi-grupo{display:inline-block;font-size:9px;font-weight:700;color:var(--navy2);background:var(--blue-lt);border-radius:100px;padding:1px 7px;margin-left:6px;font-style:normal}
 .pi-det{font-size:11px;color:var(--text3);margin-top:1px}
 .pi-add{width:28px;height:28px;border-radius:50%;background:var(--navy2);border:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:300;flex-shrink:0}
 .pi-add:active{transform:scale(.9)}
@@ -460,7 +462,7 @@ select.field{cursor:pointer}
         <div class="cat-tabs" id="cat-tabs"></div>
         <div class="search-wrap">
           <svg class="search-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <input class="search-inp" id="busca" type="text" placeholder="Buscar produto..." autocomplete="off"/>
+          <input class="search-inp" id="busca" type="text" placeholder="Buscar por produto ou princípio ativo..." autocomplete="off"/>
         </div>
         <div class="prod-list" id="prod-list"></div>
       </div>
@@ -639,8 +641,9 @@ select.field{cursor:pointer}
       <div class="card">
         <span class="lbl">Importar Tabela de Custos (Excel)</span>
         <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.6">
-          Colunas: <strong>Campanha | Grupo | Produto | Custo | Mes Referencia</strong><br>
-          Exemplo: <em>Safra 26/27 | Bayer | Priori Top | 120,00 | ago/26</em><br>
+          Colunas: <strong>Campanha | Grupo | Produto | Princípio Ativo | Custo | Mes Referencia</strong><br>
+          Exemplo: <em>Safra 26/27 | Bayer | Priori Top | azoxistrobina + ciproconazol | 120,00 | ago/26</em><br>
+          O Princípio Ativo é opcional (pode deixar a célula vazia).<br>
           Os grupos são criados automaticamente a partir da tabela.
         </div>
         <input type="file" id="excel-upload" accept=".xlsx,.xls" style="display:none"/>
@@ -701,12 +704,12 @@ import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, getDoc,
 // FIREBASE CONFIG — substitua pelos seus valores
 // ═══════════════════════════════════════════
 const FB = {
-  apiKey: "AIzaSyCfjF3USJd4a3YEDxP4P0ufXNGOBy3IMTw",
-  authDomain: "negociacao-pro.firebaseapp.com",
-  projectId: "negociacao-pro",
-  storageBucket: "negociacao-pro.firebasestorage.app",
-  messagingSenderId: "642390337613",
-  appId: "1:642390337613:web:b9c212c0aa4b1592315404"
+  apiKey: "SUA_API_KEY",
+  authDomain: "SEU_PROJETO.firebaseapp.com",
+  projectId: "SEU_PROJETO",
+  storageBucket: "SEU_PROJETO.appspot.com",
+  messagingSenderId: "SEU_SENDER_ID",
+  appId: "SEU_APP_ID"
 };
 
 const OK = FB.apiKey !== "SUA_API_KEY";
@@ -1275,7 +1278,7 @@ function getProdutos(){
     var k=b.grupo+'|'+b.produto;
     if(seen.has(k)) return false;
     seen.add(k); return true;
-  }).map(b=>({id:b.produto+'|'+b.grupo, name:b.produto, grupo:b.grupo}));
+  }).map(b=>({id:b.produto+'|'+b.grupo, name:b.produto, grupo:b.grupo, ativo:b.ativo||''}));
 }
 
 // ═══════════════════════════════════════════
@@ -1305,23 +1308,29 @@ function renderTabs(){
 function renderList(q){
   var el=document.getElementById('prod-list');
   var prods=getProdutos();
-  var f=(q||'').toLowerCase();
+  var f=(q||'').toLowerCase().trim();
+  var buscando=f.length>0;
   var visible=prods
-    .filter(p=>p.grupo===grupoAtual)
+    // Sem texto: só o grupo selecionado. Com texto: base toda (ignora grupo).
+    .filter(p=>buscando?true:p.grupo===grupoAtual)
     .filter(p=>!cart.find(c=>c.p.id===p.id))
-    .filter(p=>!f||p.name.toLowerCase().includes(f))
+    .filter(p=>!buscando || p.name.toLowerCase().includes(f) || (p.ativo&&p.ativo.toLowerCase().includes(f)))
     .sort((a,b)=>a.name.localeCompare(b.name));
   if(!prods.length){
     el.innerHTML='<div class="prod-empty">Carregue uma tabela de custos no Diretor para ver produtos.</div>';return;
   }
   if(!visible.length){
-    el.innerHTML=`<div class="prod-empty">${!f?'Todos os produtos desta categoria já adicionados':'Nenhum produto encontrado'}</div>`;return;
+    el.innerHTML=`<div class="prod-empty">${!buscando?'Todos os produtos desta categoria já adicionados':'Nenhum produto encontrado'}</div>`;return;
   }
   el.innerHTML=visible.map(p=>{
     var lista=getPrecoLista(p);
+    // Quando buscando na base toda, mostra a qual grupo o produto pertence
+    var grupoTag = buscando ? `<span class="pi-grupo">${p.grupo}</span>` : '';
+    var ativoLine = p.ativo ? `<div class="pi-ativo">${p.ativo}</div>` : '';
     return `<div class="pi">
       <div class="pi-info">
-        <div class="pi-name">${p.name}</div>
+        <div class="pi-name">${p.name}${grupoTag}</div>
+        ${ativoLine}
         <div class="pi-det">Lista: R$ ${fmtBRL(lista)}</div>
       </div>
       <button class="pi-add" data-pid="${p.id}">+</button>
@@ -1379,7 +1388,7 @@ function renderCart(){
     return `<div class="item-card">
       <div class="ic-head">
         <div class="ic-num">${i+1}</div>
-        <div class="ic-name">${item.p.name}</div>
+        <div class="ic-name">${item.p.name}${item.p.ativo?`<div style="font-size:10px;color:var(--navy3);font-style:italic;font-weight:400">${item.p.ativo}</div>`:''}</div>
         <span class="ic-grupo-tag">${item.p.grupo}</span>
         <button class="ic-del" data-delid="${item.p.id}">✕</button>
       </div>
@@ -2226,13 +2235,12 @@ document.getElementById('excel-upload').addEventListener('change', function(e){
         var campanha=String(row[0]||'').trim();
         var grupo=String(row[1]||'').trim();
         var produto=String(row[2]||'').trim();
-        var custo=parseFloat(String(row[3]||'').replace(',','.'));
-        var mes2=String(row[4]||'').trim();
-        var moeda=String(row[5]||'BRL').trim().toUpperCase();
-        if(moeda!=='USD') moeda='BRL';
+        var ativo=String(row[3]||'').trim();      // principio ativo (opcional)
+        var custo=parseFloat(String(row[4]||'').replace(',','.'));
+        var mes2=String(row[5]||'').trim();
         if(!campanha||!grupo||!produto||isNaN(custo)||!mes2){erros++;continue;}
         var pid=(grupo.substring(0,3)+produto.substring(0,10)).toLowerCase().replace(/[^a-z0-9]/g,'');
-        excelData.push({id:pid+'_'+campanha.replace(/[^a-z0-9]/gi,'_').toLowerCase(),campanha,grupo,produto,custo,mesRef:mes2,moeda});
+        excelData.push({id:pid+'_'+campanha.replace(/[^a-z0-9]/gi,'_').toLowerCase(),campanha,grupo,produto,ativo,custo,mesRef:mes2});
         campSet2.add(campanha); grSet.add(grupo);
       }
       preview.innerHTML=`<strong style="color:var(--green)">${excelData.length} produtos lidos</strong>`
@@ -2252,7 +2260,7 @@ document.getElementById('btn-excel-send').addEventListener('click', async()=>{
   btn.textContent='Enviando...';
   try{
     for(var item of excelData){
-      await setDoc(docRef('custos',item.id),{campanha:item.campanha,grupo:item.grupo,produto:item.produto,custo:item.custo,mesRef:item.mesRef,moeda:item.moeda||'BRL'});
+      await setDoc(docRef('custos',item.id),{campanha:item.campanha,grupo:item.grupo,produto:item.produto,ativo:item.ativo||'',custo:item.custo,mesRef:item.mesRef});
     }
     // Create campanhas if not exist
     var existingCamps=campanhas.map(c=>c.nome);
