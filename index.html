@@ -1121,6 +1121,11 @@ async function loadCampanhas(){
     campanhas=[];
     snap.forEach(d=>campanhas.push({id:d.id,...d.data()}));
     campanhas.sort((a,b)=>a.nome.localeCompare(b.nome));
+    // Define a campanha padrão ANTES de loadBaseCustos rodar, para que
+    // buildDatas consiga ler o período da campanha e montar a lista de meses.
+    if(!campanhas.some(c=>c.id===campAtual) && campanhas.length>0){
+      campAtual=campanhas[0].id;
+    }
   }catch(e){}
 }
 
