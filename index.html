@@ -860,8 +860,10 @@ function correctCusto(custo,mesRef,mesVenda){
 }
 function getCustoItem(p){
   var mesLabel=DATAS[mesIdx]||'';
-  // filter by campanha
-  var bc=baseCustos.filter(c=>c.campanha===campAtual&&c.produto===p.name);
+  // filter by campanha — casa por ID ou por NOME
+  var campObj=campanhas.find(c=>c.id===campAtual);
+  var campNome=campObj?campObj.nome:'';
+  var bc=baseCustos.filter(c=>(c.campanha===campAtual||c.campanha===campNome)&&c.produto===p.name);
   if(!bc.length) bc=baseCustos.filter(c=>c.produto===p.name);
   if(!bc.length) return 0;
   return correctCusto(bc[0].custo,bc[0].mesRef,mesLabel);
@@ -1279,8 +1281,10 @@ function buildDatas(mSet){
 
 function buildGrupos(){
   var gSet=new Set();
-  // use campanha filter if set
-  var filtered=campAtual?baseCustos.filter(b=>b.campanha===campAtual):baseCustos;
+  // use campanha filter if set — casa por ID ou por NOME da campanha
+  var campObj=campanhas.find(c=>c.id===campAtual);
+  var campNome=campObj?campObj.nome:'';
+  var filtered=campAtual?baseCustos.filter(b=>b.campanha===campAtual || b.campanha===campNome):baseCustos;
   filtered.forEach(b=>{ if(b.grupo) gSet.add(b.grupo); });
   grupos=[...gSet].sort();
   if(grupos.length&&!grupoAtual) grupoAtual=grupos[0];
@@ -1300,8 +1304,12 @@ function renderGruposMgList(){
 }
 
 function getProdutos(){
+  // campAtual é o ID da campanha selecionada; mas os custos importados
+  // podem ter sido gravados com o NOME da campanha. Casa pelos dois.
+  var campObj=campanhas.find(c=>c.id===campAtual);
+  var campNome=campObj?campObj.nome:'';
   var filtered=campAtual
-    ?baseCustos.filter(b=>b.campanha===campAtual)
+    ?baseCustos.filter(b=>b.campanha===campAtual || b.campanha===campNome)
     :baseCustos;
   // unique by produto+grupo
   var seen=new Set();
