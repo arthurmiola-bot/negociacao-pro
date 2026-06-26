@@ -841,12 +841,49 @@ function toast(m){
 
 // month correction
 const MMAP={jan:0,feb:1,fev:1,mar:2,apr:3,abr:3,may:4,mai:4,jun:5,jul:6,aug:7,ago:7,sep:8,set:8,oct:9,out:9,nov:10,dec:11,dez:11};
+const MES_ABBR=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+// Converte QUALQUER formato de mês para o texto canônico "mmm/aa" (ex: "abr/27").
+// Aceita: texto "abr/27"/"ago/26", objeto Date, número serial do Excel (ex: 46507),
+// e strings de data tipo "2027-04-30" ou "30/04/2027".
+function normalizeMes(v){
+  if(v===null||v===undefined||v==='') return '';
+  // 1) Objeto Date (quando lido com cellDates:true) — detecta por duck-typing
+  //    para funcionar mesmo entre contextos diferentes (PWA, iframe, etc.)
+  if(v && typeof v==='object' && typeof v.getMonth==='function' && !isNaN(v.getTime())){
+    return MES_ABBR[v.getMonth()]+'/'+String(v.getFullYear()).slice(-2);
+  }
+  // 2) Número serial do Excel (dias desde 30/12/1899)
+  if(typeof v==='number' && v>1000){
+    var d=new Date(Math.round((v-25569)*86400*1000)); // 25569 = dias até 1970
+    if(!isNaN(d)) return MES_ABBR[d.getUTCMonth()]+'/'+String(d.getUTCFullYear()).slice(-2);
+  }
+  var s=String(v).trim();
+  if(!s) return '';
+  // 3) Já está no formato texto "abr/27" / "ago/26"? mantém
+  var partes=s.toLowerCase().split('/');
+  if(partes.length===2 && MMAP[partes[0].substring(0,3)]!==undefined && partes[1].length<=4){
+    return s.toLowerCase();
+  }
+  // 4) String de data ISO "2027-04-30" ou similar
+  var iso=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(iso){ return MES_ABBR[parseInt(iso[2])-1]+'/'+iso[1].slice(-2); }
+  // 5) String "dd/mm/aaaa" ou "dd/mm/aa" (formato brasileiro)
+  if(partes.length===3){
+    var mm=parseInt(partes[1]), yy=partes[2];
+    if(mm>=1 && mm<=12){ return MES_ABBR[mm-1]+'/'+yy.slice(-2); }
+  }
+  // 6) Não reconheceu — devolve original (parseMes lida ou ignora)
+  return s;
+}
 function parseMes(s){
-  if(!s) return null;
-  var p=String(s).toLowerCase().split('/');
+  if(s===null||s===undefined||s==='') return null;
+  // Normaliza antes: assim datas/seriais já gravados no banco também funcionam
+  var txt=normalizeMes(s);
+  var p=String(txt).toLowerCase().split('/');
   if(p.length<2) return null;
   var m=MMAP[p[0].substring(0,3)];
-  var y=parseInt(p[1]); if(y<100) y+=2000;
+  if(m===undefined) return null;
+  var y=parseInt(p[1]); if(isNaN(y)) return null; if(y<100) y+=2000;
   return {m,y};
 }
 function mDiff(a,b){ return (b.y-a.y)*12+(b.m-a.m); }
@@ -2265,7 +2302,7 @@ document.getElementById('excel-upload').addEventListener('change', function(e){
   var reader=new FileReader();
   reader.onload=function(ev){
     try{
-      var wb=XLSX.read(ev.target.result,{type:'array'});
+      var wb=XLSX.read(ev.target.result,{type:'array',cellDates:true});
       var ws=wb.Sheets[wb.SheetNames[0]];
       var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
       excelData=[]; var erros=0; var campSet2=new Set(); var grSet=new Set();
@@ -2276,7 +2313,7 @@ document.getElementById('excel-upload').addEventListener('change', function(e){
         var produto=String(row[2]||'').trim();
         var ativo=String(row[3]||'').trim();      // principio ativo (opcional)
         var custo=parseFloat(String(row[4]||'').replace(',','.'));
-        var mes2=String(row[5]||'').trim();
+        var mes2=normalizeMes(row[5]);            // aceita texto, Date ou serial do Excel
         if(!campanha||!grupo||!produto||isNaN(custo)||!mes2){erros++;continue;}
         var pid=(grupo.substring(0,3)+produto.substring(0,10)).toLowerCase().replace(/[^a-z0-9]/g,'');
         excelData.push({id:pid+'_'+campanha.replace(/[^a-z0-9]/gi,'_').toLowerCase(),campanha,grupo,produto,ativo,custo,mesRef:mes2});
