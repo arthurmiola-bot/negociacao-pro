@@ -119,6 +119,18 @@ select.field{cursor:pointer}
 .pi-ativo{font-size:11px;color:var(--navy3);font-style:italic;margin-top:1px}
 .pi-grupo{display:inline-block;font-size:9px;font-weight:700;color:var(--navy2);background:var(--blue-lt);border-radius:100px;padding:1px 7px;margin-left:6px;font-style:normal}
 .pi-det{font-size:11px;color:var(--text3);margin-top:1px}
+/* LISTA DE PRECOS */
+.pl-grupo-head{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--navy2);background:var(--blue-lt);padding:5px 12px;border-radius:6px;margin:10px 0 6px}
+.pl-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1.5px solid var(--bdr);border-radius:10px;margin-bottom:6px}
+.pl-info{flex:1;min-width:0}
+.pl-nome{font-size:14px;font-weight:700;color:var(--text)}
+.pl-ativo{font-size:11px;color:var(--navy3);font-style:italic;margin-top:1px}
+.pl-grupo-tag{display:inline-block;font-size:9px;font-weight:700;color:var(--navy2);background:var(--blue-lt);border-radius:100px;padding:1px 7px;margin-left:6px;font-style:normal;vertical-align:middle}
+.pl-preco{text-align:right;flex-shrink:0}
+.pl-preco-val{font-size:16px;font-weight:800;color:var(--navy2)}
+.pl-preco-lbl{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)}
+.pl-empty{text-align:center;padding:30px 20px;font-size:13px;color:var(--text3)}
+.pl-count{font-size:11px;color:var(--text3);padding:4px 2px 8px}
 .pi-add{width:28px;height:28px;border-radius:50%;background:var(--navy2);border:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:300;flex-shrink:0}
 .pi-add:active{transform:scale(.9)}
 .prod-empty{padding:14px;text-align:center;font-size:12px;color:var(--text3)}
@@ -424,6 +436,7 @@ select.field{cursor:pointer}
 
   <div class="mod-tabs" id="mod-tabs-bar">
     <button class="mod-tab active" data-mod="vendedor">📋 Cotacao</button>
+    <button class="mod-tab" data-mod="precos">🏷️ Precos</button>
     <button class="mod-tab hidden" data-mod="gerente" id="tab-gerente">📊 Gerente</button>
     <button class="mod-tab hidden" data-mod="diretor" id="tab-diretor">⚙ Diretor</button>
   </div>
@@ -492,6 +505,34 @@ select.field{cursor:pointer}
           Salvar
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- LISTA DE PRECOS MODULE -->
+  <div id="mod-precos" class="module">
+    <div class="camp-bar">
+      <label>CAMPANHA</label>
+      <select class="bar-sel" id="precos-camp-select"><option value="">Selecione...</option></select>
+      <label style="margin-left:8px">MES</label>
+      <select class="bar-sel" id="precos-mes-select" style="max-width:100px"></select>
+    </div>
+    <div class="scroll-area" style="padding-bottom:30px">
+      <div class="card">
+        <div class="search-wrap" style="margin-bottom:8px">
+          <svg class="search-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input class="search-inp" id="precos-busca" type="text" placeholder="Buscar por produto ou princípio ativo..." autocomplete="off"/>
+        </div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <select class="filter-sel" id="precos-f-grupo" style="flex:1;min-width:130px"><option value="">Todos os grupos</option></select>
+          <select class="filter-sel" id="precos-ordenar" style="flex:1;min-width:130px">
+            <option value="produto">Ordenar: Produto (A-Z)</option>
+            <option value="grupo">Ordenar: Grupo</option>
+            <option value="ativo">Ordenar: Princípio Ativo</option>
+            <option value="preco">Ordenar: Preço (menor)</option>
+          </select>
+        </div>
+      </div>
+      <div id="precos-list"></div>
     </div>
   </div>
 
@@ -1807,9 +1848,102 @@ document.querySelectorAll('.mod-tab').forEach(tab=>{
     tab.classList.add('active');
     document.querySelectorAll('.module').forEach(m=>m.classList.remove('active'));
     document.getElementById('mod-'+mod).classList.add('active');
+    if(mod==='precos') loadPrecos();
     if(mod==='gerente') loadGerente();
     if(mod==='diretor') loadDiretor();
   });
+});
+
+// ═══════════════════════════════════════════
+// LISTA DE PRECOS (consulta rápida para o vendedor)
+// Mostra preço de lista = custo corrigido (juros/antecipação do mês) + margem do grupo,
+// respeitando a campanha e o mês selecionados. Permite filtrar por grupo, buscar e ordenar.
+// ═══════════════════════════════════════════
+function loadPrecos(){
+  // Sincroniza os seletores de campanha/mês com o estado atual do app
+  var cs=document.getElementById('precos-camp-select');
+  cs.innerHTML='<option value="">Selecione a campanha...</option>'
+    +campanhas.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
+  if(!campanhas.some(c=>c.id===campAtual) && campanhas.length>0) campAtual=campanhas[0].id;
+  cs.value=campAtual||'';
+  cs.onchange=()=>{ campAtual=cs.value; document.getElementById('camp-select').value=campAtual; renderPrecos(); };
+
+  var ms=document.getElementById('precos-mes-select');
+  ms.innerHTML=DATAS.map((d,i)=>`<option value="${i}">${d}</option>`).join('');
+  ms.value=mesIdx;
+  ms.onchange=()=>{ mesIdx=parseInt(ms.value); document.getElementById('mes-select').value=mesIdx; renderPrecos(); };
+
+  // Preenche o filtro de grupos
+  var fg=document.getElementById('precos-f-grupo');
+  var cur=fg.value;
+  fg.innerHTML='<option value="">Todos os grupos</option>'+grupos.map(g=>`<option value="${g}">${g}</option>`).join('');
+  fg.value=cur;
+
+  renderPrecos();
+}
+
+function renderPrecos(){
+  var el=document.getElementById('precos-list');
+  var prods=getProdutos(); // já respeita a campanha selecionada
+  if(!prods.length){
+    el.innerHTML='<div class="pl-empty">Nenhum produto na campanha selecionada.<br>Carregue uma tabela de custos no Diretor.</div>';
+    return;
+  }
+  var f=(document.getElementById('precos-busca').value||'').toLowerCase().trim();
+  var fGrupo=document.getElementById('precos-f-grupo').value;
+  var ordem=document.getElementById('precos-ordenar').value;
+
+  // Calcula o preço de cada produto (custo corrigido + margem do grupo)
+  var lista=prods.map(p=>({
+    nome:p.name, grupo:p.grupo, ativo:p.ativo||'', preco:getPrecoLista(p)
+  }))
+  .filter(x=>!fGrupo || x.grupo===fGrupo)
+  .filter(x=>!f || x.nome.toLowerCase().includes(f) || (x.ativo&&x.ativo.toLowerCase().includes(f)));
+
+  // Ordenação
+  lista.sort((a,b)=>{
+    if(ordem==='preco') return a.preco-b.preco;
+    if(ordem==='grupo') return a.grupo.localeCompare(b.grupo)||a.nome.localeCompare(b.nome);
+    if(ordem==='ativo') return (a.ativo||'zzz').localeCompare(b.ativo||'zzz')||a.nome.localeCompare(b.nome);
+    return a.nome.localeCompare(b.nome); // produto
+  });
+
+  if(!lista.length){ el.innerHTML='<div class="pl-empty">Nenhum produto encontrado com esse filtro.</div>'; return; }
+
+  var mesLabel=DATAS[mesIdx]||'';
+  var html='<div class="pl-count">'+lista.length+' produto(s) · preços para <strong>'+mesLabel+'</strong></div>';
+
+  if(ordem==='grupo'){
+    // Agrupa visualmente por grupo
+    var atual=null;
+    lista.forEach(x=>{
+      if(x.grupo!==atual){ atual=x.grupo; html+=`<div class="pl-grupo-head">${atual}</div>`; }
+      html+=linhaPreco(x,false);
+    });
+  } else {
+    lista.forEach(x=>{ html+=linhaPreco(x,true); });
+  }
+  el.innerHTML=html;
+}
+
+function linhaPreco(x, mostraGrupo){
+  var tag = mostraGrupo ? `<span class="pl-grupo-tag">${x.grupo}</span>` : '';
+  var ativo = x.ativo ? `<div class="pl-ativo">${x.ativo}</div>` : '';
+  return `<div class="pl-row">
+    <div class="pl-info">
+      <div class="pl-nome">${x.nome}${tag}</div>
+      ${ativo}
+    </div>
+    <div class="pl-preco">
+      <div class="pl-preco-lbl">Preço</div>
+      <div class="pl-preco-val">R$ ${fmtBRL(x.preco)}</div>
+    </div>
+  </div>`;
+}
+
+['precos-busca','precos-f-grupo','precos-ordenar'].forEach(id=>{
+  var elx=document.getElementById(id);
+  if(elx){ elx.addEventListener(id==='precos-busca'?'input':'change', renderPrecos); }
 });
 
 // ═══════════════════════════════════════════
