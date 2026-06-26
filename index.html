@@ -1137,7 +1137,15 @@ function renderCampSelect(){
   var aindaExiste=campanhas.some(c=>c.id===campAtual);
   if(!aindaExiste && campanhas.length>0) campAtual=campanhas[0].id;
   sel.value=campAtual||'';
-  sel.onchange=()=>{campAtual=sel.value;renderList(document.getElementById('busca').value);renderCart();};
+  sel.onchange=()=>{
+    campAtual=sel.value;
+    // OPÇÃO B: ao trocar de campanha, recalcula a lista de meses para o período dela
+    var mSet=new Set(); baseCustos.forEach(b=>{ if(b.mesRef) mSet.add(b.mesRef); });
+    buildDatas(mSet);
+    buildGrupos();
+    renderList(document.getElementById('busca').value);
+    renderCart();
+  };
 }
 
 function renderCampListDir(){
@@ -1360,38 +1368,35 @@ async function loadBaseCustos(){
 }
 
 function buildDatas(mSet){
-  if(!mSet||!mSet.size) return;
-  var sorted=[...mSet].sort((a,b)=>{
-    var pa=parseMes(a),pb=parseMes(b);
-    if(!pa||!pb) return 0;
-    return pa.y*12+pa.m-(pb.y*12+pb.m);
-  });
-  var first=parseMes(sorted[0]), last=parseMes(sorted[sorted.length-1]);
-  if(!first||!last) return;
+  var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var startAbs=null, endAbs=null;
 
-  // Os custos podem ter um único mês de referência (ex: tudo abr/27).
-  // Para o vendedor poder cotar com entrega em outros meses (aplicando juros/
-  // antecipação), o seletor precisa oferecer um intervalo de meses, não só os
-  // meses de referência. Ancoramos no período da campanha quando disponível;
-  // senão, abrimos uma margem de meses antes e depois.
-  var startAbs=first.y*12+first.m;
-  var endAbs=last.y*12+last.m;
-  // Tenta usar o período da campanha selecionada
+  // OPÇÃO B: a lista de meses é EXATAMENTE o período da campanha selecionada.
   var campObj=campanhas.find(c=>c.id===campAtual);
   if(campObj && campObj.inicio && campObj.fim){
     var ci=campObj.inicio.split('-'), cf=campObj.fim.split('-');
     if(ci.length>=2 && cf.length>=2){
       var ciAbs=parseInt(ci[0])*12+(parseInt(ci[1])-1);
       var cfAbs=parseInt(cf[0])*12+(parseInt(cf[1])-1);
-      if(!isNaN(ciAbs)) startAbs=Math.min(startAbs,ciAbs);
-      if(!isNaN(cfAbs)) endAbs=Math.max(endAbs,cfAbs);
+      if(!isNaN(ciAbs) && !isNaN(cfAbs) && cfAbs>=ciAbs){ startAbs=ciAbs; endAbs=cfAbs; }
     }
   }
-  // Garante uma margem mínima de 6 meses antes e 3 depois do(s) mês(es) de referência
-  startAbs=Math.min(startAbs, first.y*12+first.m-6);
-  endAbs=Math.max(endAbs, last.y*12+last.m+3);
 
-  var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // Fallback: campanha sem datas válidas — usa os meses de referência dos custos,
+  // com uma pequena margem (6 antes / 3 depois) para haver opções de venda.
+  if(startAbs===null && mSet && mSet.size){
+    var sorted=[...mSet].sort((a,b)=>{
+      var pa=parseMes(a),pb=parseMes(b);
+      if(!pa||!pb) return 0;
+      return pa.y*12+pa.m-(pb.y*12+pb.m);
+    });
+    var first=parseMes(sorted[0]), last=parseMes(sorted[sorted.length-1]);
+    if(first&&last){ startAbs=first.y*12+first.m-6; endAbs=last.y*12+last.m+3; }
+  }
+
+  // Sem nada para montar: mantém o que já existe (ou deixa o fallback do setupMes agir)
+  if(startAbs===null || endAbs===null){ setupMes(); return; }
+
   var result=[];
   for(var abs=startAbs; abs<=endAbs; abs++){
     var y=Math.floor(abs/12), m=abs%12;
@@ -1910,7 +1915,21 @@ function loadPrecos(){
     +campanhas.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
   if(!campanhas.some(c=>c.id===campAtual) && campanhas.length>0) campAtual=campanhas[0].id;
   cs.value=campAtual||'';
-  cs.onchange=()=>{ campAtual=cs.value; document.getElementById('camp-select').value=campAtual; renderPrecos(); };
+  cs.onchange=()=>{
+    campAtual=cs.value;
+    document.getElementById('camp-select').value=campAtual;
+    // OPÇÃO B: recalcula a lista de meses para o período da campanha escolhida
+    var mSet=new Set(); baseCustos.forEach(b=>{ if(b.mesRef) mSet.add(b.mesRef); });
+    buildDatas(mSet);
+    buildGrupos();
+    // Atualiza o seletor de mês desta aba e o filtro de grupos
+    var ms2=document.getElementById('precos-mes-select');
+    ms2.innerHTML=DATAS.map((d,i)=>`<option value="${i}">${d}</option>`).join('');
+    ms2.value=mesIdx;
+    var fg2=document.getElementById('precos-f-grupo');
+    fg2.innerHTML='<option value="">Todos os grupos</option>'+grupos.map(g=>`<option value="${g}">${g}</option>`).join('');
+    renderPrecos();
+  };
 
   var ms=document.getElementById('precos-mes-select');
   ms.innerHTML=DATAS.map((d,i)=>`<option value="${i}">${d}</option>`).join('');
