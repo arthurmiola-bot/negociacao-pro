@@ -1314,8 +1314,22 @@ function setupMes(){
     DATAS=["Aug/26","Sep/26","Oct/26","Nov/26","Dec/26","Jan/27","Feb/27","Mar/27","Apr/27"];
   }
   sel.innerHTML=DATAS.map((d,i)=>`<option value="${i}">${d}</option>`).join('');
-  mesIdx=DATAS.length-1; sel.value=mesIdx;
+  // Padrão: começa no mês de referência dos custos (onde a correção é zero),
+  // em vez do último mês — assim o preço inicial é o custo "puro".
+  var refMes='';
+  for(var b of baseCustos){ if(b.mesRef){ refMes=normalizeMes(b.mesRef); break; } }
+  var idxRef=refMes?DATAS.indexOf(canonToDatasLabel(refMes)):-1;
+  mesIdx = idxRef>=0 ? idxRef : DATAS.length-1;
+  sel.value=mesIdx;
   sel.onchange=()=>{mesIdx=parseInt(sel.value);renderCart();renderList(document.getElementById('busca').value);};
+}
+// Converte "abr/27" (canônico) para o rótulo usado em DATAS ("Apr/27")
+function canonToDatasLabel(canon){
+  var MMAP2={jan:'Jan',fev:'Feb',mar:'Mar',abr:'Apr',mai:'May',jun:'Jun',jul:'Jul',ago:'Aug',set:'Sep',out:'Oct',nov:'Nov',dez:'Dec'};
+  var p=String(canon).toLowerCase().split('/');
+  if(p.length<2) return canon;
+  var en=MMAP2[p[0].substring(0,3)];
+  return en?en+'/'+p[1]:canon;
 }
 
 // ═══════════════════════════════════════════
@@ -1329,6 +1343,9 @@ async function loadBaseCustos(){
     var mSet=new Set();
     snap.forEach(d=>{
       var item={id:d.id,...d.data()};
+      // Normaliza o mês de referência para o formato canônico "abr/27".
+      // Cobre dados antigos gravados como data/serial do Excel.
+      if(item.mesRef) item.mesRef=normalizeMes(item.mesRef);
       baseCustos.push(item);
       if(item.mesRef) mSet.add(item.mesRef);
     });
@@ -1344,14 +1361,36 @@ function buildDatas(mSet){
     if(!pa||!pb) return 0;
     return pa.y*12+pa.m-(pb.y*12+pb.m);
   });
-  // generate full range
   var first=parseMes(sorted[0]), last=parseMes(sorted[sorted.length-1]);
   if(!first||!last) return;
+
+  // Os custos podem ter um único mês de referência (ex: tudo abr/27).
+  // Para o vendedor poder cotar com entrega em outros meses (aplicando juros/
+  // antecipação), o seletor precisa oferecer um intervalo de meses, não só os
+  // meses de referência. Ancoramos no período da campanha quando disponível;
+  // senão, abrimos uma margem de meses antes e depois.
+  var startAbs=first.y*12+first.m;
+  var endAbs=last.y*12+last.m;
+  // Tenta usar o período da campanha selecionada
+  var campObj=campanhas.find(c=>c.id===campAtual);
+  if(campObj && campObj.inicio && campObj.fim){
+    var ci=campObj.inicio.split('-'), cf=campObj.fim.split('-');
+    if(ci.length>=2 && cf.length>=2){
+      var ciAbs=parseInt(ci[0])*12+(parseInt(ci[1])-1);
+      var cfAbs=parseInt(cf[0])*12+(parseInt(cf[1])-1);
+      if(!isNaN(ciAbs)) startAbs=Math.min(startAbs,ciAbs);
+      if(!isNaN(cfAbs)) endAbs=Math.max(endAbs,cfAbs);
+    }
+  }
+  // Garante uma margem mínima de 6 meses antes e 3 depois do(s) mês(es) de referência
+  startAbs=Math.min(startAbs, first.y*12+first.m-6);
+  endAbs=Math.max(endAbs, last.y*12+last.m+3);
+
   var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var result=[]; var y=first.y,m=first.m;
-  while(y<last.y||(y===last.y&&m<=last.m)){
+  var result=[];
+  for(var abs=startAbs; abs<=endAbs; abs++){
+    var y=Math.floor(abs/12), m=abs%12;
     result.push(MONTHS[m]+'/'+(y-2000).toString().padStart(2,'0'));
-    m++; if(m>11){m=0;y++;}
   }
   DATAS=result;
   setupMes();
