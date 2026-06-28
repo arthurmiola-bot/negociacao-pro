@@ -1,5 +1,5 @@
-// Negociacao Pro — Service Worker v3
-const CACHE = 'negpro-v3';
+// Negociacao Pro — Service Worker v4
+const CACHE = 'negpro-v4';
 const ASSETS = [
   './index.html',
   './manifest.json',

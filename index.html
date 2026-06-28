@@ -240,8 +240,8 @@ select.field{cursor:pointer}
 .cot-expand{font-size:16px;color:var(--text3);transition:transform .2s;flex-shrink:0}
 .cot-expand.open{transform:rotate(180deg)}
 .cot-body{border-top:1.5px solid #eef;display:none}
-.cot-body.open{display:block}
-.cot-items-table{width:100%}
+.cot-body.open{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.cot-items-table{width:100%;min-width:480px}
 .cot-items-table th{font-size:9px;font-weight:700;color:var(--text3);letter-spacing:.07em;text-transform:uppercase;padding:7px 14px;background:var(--bg);text-align:right}
 .cot-items-table th:first-child{text-align:left}
 .cot-items-table td{font-size:11px;padding:7px 14px;border-top:1px solid #f0f0f0;text-align:right;vertical-align:middle}
@@ -1905,12 +1905,23 @@ async function openHist(){
   el.innerHTML='<div class="hist-empty">Carregando...</div>';
   if(!OK){el.innerHTML='<div class="hist-empty">Firebase nao configurado</div>';return;}
   try{
-    var q2=query(col('cotacoes'),where('uid','==',currentUser.uid),orderBy('updatedAt','desc'));
+    // Busca só por uid (sem orderBy) para NÃO exigir índice composto do Firestore.
+    // A ordenação por data é feita no app, logo abaixo.
+    var q2=query(col('cotacoes'),where('uid','==',currentUser.uid));
     var snap=await getDocs(q2);
     if(snap.empty){el.innerHTML='<div class="hist-empty">Nenhuma cotacao salva</div>';return;}
+    // Coleta os documentos e ordena por data (mais recente primeiro) aqui mesmo
+    var docs=[];
+    snap.forEach(d=>docs.push({id:d.id, data:d.data()}));
+    docs.sort((a,b)=>{
+      var ta=a.data.updatedAt?.toDate?.()?.getTime?.() || a.data.criadoEm?.toDate?.()?.getTime?.() || 0;
+      var tb=b.data.updatedAt?.toDate?.()?.getTime?.() || b.data.criadoEm?.toDate?.()?.getTime?.() || 0;
+      return tb-ta;
+    });
     var html='';
-    snap.forEach(d=>{
-      var s=d.data(); var mg=(s.margem||0)*100;
+    docs.forEach(item=>{
+      var d={id:item.id, data:()=>item.data};
+      var s=item.data; var mg=(s.margem||0)*100;
       var mc=mgClass(mg,margemMin);
       var dt=s.updatedAt?.toDate?.()||new Date(s.criadoEm||Date.now());
       var ds=dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})+' '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
@@ -2095,7 +2106,8 @@ async function loadGerente(){
     var myPerfil=perfil();
     var q2;
     if(myPerfil==='gerente'){
-      q2=query(col('cotacoes'),where('lojaId','==',userData.lojaId||''),orderBy('updatedAt','desc'));
+      // Sem orderBy (evita exigir índice composto). Ordenamos no app abaixo.
+      q2=query(col('cotacoes'),where('lojaId','==',userData.lojaId||''));
     } else {
       q2=query(col('cotacoes'),orderBy('updatedAt','desc'));
     }
@@ -2107,6 +2119,12 @@ async function loadGerente(){
       vendSet.add(s.vendedor||s.uid);
       if(s.lojaId) lojaSet.add(s.lojaId);
       if(s.campanha) campSet.add(s.campanha);
+    });
+    // Ordena por data (mais recente primeiro) no app — cobre o caso do gerente
+    docs.sort((a,b)=>{
+      var ta=a.updatedAt?.toDate?.()?.getTime?.() || 0;
+      var tb=b.updatedAt?.toDate?.()?.getTime?.() || 0;
+      return tb-ta;
     });
     // Populate filters
     var fvEl=document.getElementById('ger-f-vend');
@@ -2352,7 +2370,8 @@ async function checarPendencias(){
   try{
     var q2;
     if(perfil()==='gerente'){
-      q2=query(col('cotacoes'),where('lojaId','==',userData.lojaId||''),where('status','==','enviada'));
+      // Um único where (evita índice composto); o status é filtrado no app abaixo.
+      q2=query(col('cotacoes'),where('lojaId','==',userData.lojaId||''));
     } else {
       q2=query(col('cotacoes'),where('status','==','enviada'));
     }
@@ -2360,6 +2379,7 @@ async function checarPendencias(){
     var n=0;
     snap.forEach(d=>{
       var s=d.data();
+      if(s.status!=='enviada') return; // filtra status aqui (cobre o caso do gerente)
       var mg=s.totNeg>0?(s.totNeg-s.totCusto)/s.totNeg*100:0;
       if(mg<margemMin && s.totNeg>0) n++;
     });
