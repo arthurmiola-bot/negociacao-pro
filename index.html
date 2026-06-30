@@ -693,6 +693,9 @@ select.field{cursor:pointer}
           O Princípio Ativo é opcional (pode deixar a célula vazia).<br>
           Os grupos são criados automaticamente a partir da tabela.
         </div>
+        <button class="btn-outline" id="btn-baixar-modelo" style="margin-bottom:8px;width:100%;justify-content:center">
+          📥 Baixar modelo da planilha
+        </button>
         <input type="file" id="excel-upload" accept=".xlsx,.xls" style="display:none"/>
         <button class="btn-primary" id="btn-excel-pick" style="margin-bottom:8px;justify-content:center">
           📁 Selecionar arquivo Excel
@@ -2586,6 +2589,31 @@ function renderBaseCustosList(){
 // EXCEL IMPORT
 // ═══════════════════════════════════════════
 document.getElementById('btn-excel-pick').addEventListener('click',()=>document.getElementById('excel-upload').click());
+
+// ═══════════════════════════════════════════
+// BAIXAR MODELO DA PLANILHA
+// Gera um .xlsx com o cabeçalho na ordem certa e uma linha de exemplo.
+// A coluna "Mes Referencia" é forçada como TEXTO (formato @) para o Excel
+// não converter "abr/27" em data automaticamente.
+// ═══════════════════════════════════════════
+document.getElementById('btn-baixar-modelo').addEventListener('click',()=>{
+  try{
+    var cabecalho=['Campanha','Grupo','Produto','Principio Ativo','Custo','Mes Referencia'];
+    var exemplo=['Safra 26/27','Especialidade','Produto Exemplo','ingrediente ativo','120,00','abr/27'];
+    var ws=XLSX.utils.aoa_to_sheet([cabecalho, exemplo]);
+    // Força a coluna F (Mes Referencia) como texto, tanto no cabeçalho quanto no exemplo
+    ['F1','F2'].forEach(function(ref){
+      if(ws[ref]){ ws[ref].t='s'; ws[ref].z='@'; }
+    });
+    // Também marca o tipo da coluna inteira como texto (ajuda alguns leitores)
+    if(!ws['!cols']) ws['!cols']=[];
+    ws['!cols'][5]={wch:16}; // largura da coluna do mês
+    var wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Custos');
+    XLSX.writeFile(wb,'modelo_tabela_custos.xlsx');
+    toast('Modelo baixado!');
+  }catch(e){ toast('Erro ao gerar modelo: '+(e.message||e)); }
+});
 
 document.getElementById('excel-upload').addEventListener('change', function(e){
   var file=e.target.files[0]; if(!file) return;
